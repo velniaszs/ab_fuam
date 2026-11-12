@@ -74,6 +74,7 @@ pd.options.mode.chained_assignment = None # This option is used to suppress a wa
 # - **has_tenant_domains**: Set to _True_, if your tenant uses Domains
 # - **extract_powerbi_artifacts_only**: If _True_, the notebook extracts and writes data for Power BI artifacts only (datamart, semantic model, dataflow, report, dashboard)
 # - **display_data**: If true, the notebook shows the results of important steps (eg. extracted workspaces dataframe)
+# - **target_lakehouse**: Optional. If set, tables and JSON files are written to this lakehouse instead of the default lakehouse. Used by the regression test notebook, which reference-runs this notebook inside its own session (and therefore with its default lakehouse)
 # 
 
 
@@ -94,6 +95,10 @@ optional_keyvault_name = '' # Name of the Azure Key Vault
 optional_keyvault_sp_tenantId_secret_name = ''   # Tenant ID secret name
 optional_keyvault_sp_clientId_secret_name = ''   # Name for Client ID of Service Principal
 optional_keyvault_sp_secret_secret_name = '' # Name for Client Secret of Service Principal
+
+# Testing
+# Write all output to this lakehouse (same workspace) instead of the default lakehouse
+target_lakehouse = ''
 
 # METADATA ********************
 
@@ -176,6 +181,30 @@ results = []
 
 # Array of appended tenant scan content
 write_list = []
+
+# METADATA ********************
+
+# META {
+# META   "language": "python",
+# META   "language_group": "synapse_pyspark"
+# META }
+
+# CELL ********************
+
+## Output location
+# Empty target_lakehouse = write to the default lakehouse (standard behaviour)
+target_tables_path = None
+target_files_path = None
+
+if target_lakehouse:
+    target_lh = notebookutils.lakehouse.get(target_lakehouse)
+    target_root = f"abfss://{target_lh.workspaceId}@onelake.dfs.fabric.microsoft.com/{target_lh.id}"
+    target_tables_path = f"{target_root}/Tables"
+    # Schema-enabled lakehouses keep tables under Tables/dbo
+    if notebookutils.fs.exists(f"{target_tables_path}/dbo"):
+        target_tables_path += "/dbo"
+    target_files_path = f"{target_root}/Files"
+    print(f"Output redirected to lakehouse {target_lakehouse}: {target_tables_path}")
 
 # METADATA ********************
 
@@ -383,7 +412,10 @@ for i, row in df_runs.iterrows():
             print("/v1.0/myorg/admin/workspaces/scanResult/" + row["run_id"])
             results.append(response.json())
 
-            if write_to_files:
+            if write_to_files and target_files_path:
+                target_file = target_files_path + "/history/inventory/" + current_time.strftime("%Y/%m/%d") + "/" + current_time.strftime("%H-%M-%S") + "/" + row["run_id"] + ".json"
+                mssparkutils.fs.put(target_file, json.dumps(response.json()), True)
+            elif write_to_files:
                 folder_path = mssparkutils.fs.getMountPath('/default') + "/Files/history/inventory/" + current_time.strftime("%Y/%m/%d") + "/" +  current_time.strftime("%H-%M-%S") + "/"
                 mssparkutils.fs.mkdirs(f"file://" +folder_path)
 
@@ -1950,7 +1982,10 @@ def write_data_to_gold(df, table_name):
         # Transfer pandas df to spark df
         spark_df = spark.createDataFrame(df)
         #spark_df.printSchema()
-        spark_df.write.mode("overwrite").option("mergeSchema", "true").format("delta").saveAsTable(table_name)
+        if target_tables_path:
+            spark_df.write.mode("overwrite").option("mergeSchema", "true").format("delta").save(target_tables_path + "/" + table_name)
+        else:
+            spark_df.write.mode("overwrite").option("mergeSchema", "true").format("delta").saveAsTable(table_name)
 
 # METADATA ********************
 
