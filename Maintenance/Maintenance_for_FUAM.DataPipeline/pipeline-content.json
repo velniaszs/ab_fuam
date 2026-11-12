@@ -1,0 +1,85 @@
+{
+  "properties": {
+    "activities": [
+      {
+        "type": "TridentNotebook",
+        "typeProperties": {
+          "notebookId": "271dd1dd-0d1d-8bda-40fc-2d394b80c76f",
+          "workspaceId": "00000000-0000-0000-0000-000000000000",
+          "parameters": {
+            "backup_files": {
+              "value": {
+                "value": "@pipeline().parameters.backup_files",
+                "type": "Expression"
+              },
+              "type": "bool"
+            },
+            "keep_historic_days": {
+              "value": {
+                "value": "@pipeline().parameters.keep_historic_days",
+                "type": "Expression"
+              },
+              "type": "int"
+            }
+          },
+          "sessionTag": "fuam"
+        },
+        "policy": {
+          "timeout": "0.12:00:00",
+          "retry": 0,
+          "retryIntervalInSeconds": 30,
+          "secureInput": false,
+          "secureOutput": false
+        },
+        "name": "Perform Backup",
+        "dependsOn": []
+      },
+      {
+        "type": "TridentNotebook",
+        "typeProperties": {
+          "notebookId": "71702626-c929-8af7-48a7-5d3fb5d0d512",
+          "workspaceId": "00000000-0000-0000-0000-000000000000",
+          "parameters": {
+            "number_of_days": {
+              "value": {
+                "value": "@pipeline().parameters.vacuum_number_of_days",
+                "type": "Expression"
+              },
+              "type": "int"
+            }
+          }
+        },
+        "policy": {
+          "timeout": "0.12:00:00",
+          "retry": 0,
+          "retryIntervalInSeconds": 30,
+          "secureInput": false,
+          "secureOutput": false
+        },
+        "name": "Perform Table Maintenance",
+        "dependsOn": [
+          {
+            "activity": "Perform Backup",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          }
+        ]
+      }
+    ],
+    "parameters": {
+      "keep_historic_days": {
+        "type": "int",
+        "defaultValue": 14
+      },
+      "backup_files": {
+        "type": "bool",
+        "defaultValue": true
+      },
+      "vacuum_number_of_days": {
+        "type": "string",
+        "defaultValue": "14"
+      }
+    }
+  }
+}
